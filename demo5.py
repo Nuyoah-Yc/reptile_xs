@@ -47,32 +47,35 @@ def get_html():
 
 
 def get_data():
-    htmls = etree.HTML(get_html())
+    html_text = get_html()
+    if not html_text:
+        return "没有获取到数据"
+    htmls = etree.HTML(html_text)
 
     data_info = {}
     data_info['Category'] = re.sub(r'\(.*?\)', '', ''.join(
         htmls.xpath('//span[@class="category productCategory"]/span/span/text()')).replace('\xa0>\xa0', ' > ').strip())
     data_info['Brand'] = None
     data_info['Product Name'] = htmls.xpath('//*[@id="productTitle"]/@value')[0]
-    data_info['Product Description'] = f"""
-        {html.fromstring(htmls.xpath('//input[@id="saveDescriptionEditorDataIpt"]/@value')[0]).text_content()},
-        {','.join(html.fromstring(htmls.xpath('//input[@id="saveDescriptionEditorDataIpt"]/@value')[0]).xpath('//img/@src'))}
-    """
-    data_info['Package weight(g)'] = htmls.xpath('//*[@id="proWeight"]/@value')[0]
+    # data_info['Product Description'] = f"""
+    #     {html.fromstring(htmls.xpath('//input[@id="saveDescriptionEditorDataIpt"]/@value')[0]).text_content()},
+    #     {','.join(html.fromstring(htmls.xpath('//input[@id="saveDescriptionEditorDataIpt"]/@value')[0]).xpath('//img/@src'))}
+    # """
+    data_info['Product Description'] = html.fromstring(htmls.xpath('//input[@id="saveDescriptionEditorDataIpt"]/@value')[0]).text_content()
+    data_info['Package weight(g)'] = float(htmls.xpath('//*[@id="proWeight"]/@value')[0]) * 1000
     data_info['Package length(cm)'] = htmls.xpath('//*[@id="proLength"]/@value')[0]
     data_info['Package width(cm)'] = htmls.xpath('//*[@id="proWidth"]/@value')[0]
     data_info['Package height(cm)'] = htmls.xpath('//*[@id="proHeight"]/@value')[0]
     data_info['Delivery options'] = None
     data_info['Identifier code type'] = None
     data_info['Identifier code'] = None
-    data_info['Variation 1'] = '\n\n'.join(
+    data_info['Variation 1'] = ','.join(
         htmls.xpath('//*[@id="skuInfoArrBox"]/div[1]/div[2]/div[1]/div/label/span/text()'))
-    data_info['Variation 2'] = '\n\n'.join(
+    data_info['Variation 2'] = ','.join(
         htmls.xpath('//*[@id="skuInfoArrBox"]/div[2]/div[2]/div[1]/div/label/span[2]/text()'))
-    data_info['Variant image'] = '\n\n'.join(f'({name}:{link})' for name, link in zip(htmls.xpath(
-        '//*[@id="skuInfoArrBox"]/div[3]/div[2]/div/div/div[1]/text()'), htmls.xpath(
-        '//*[@id="skuInfoArrBox"]/div[3]/div[2]/div/div/div[2]/div[1]/img/@src')))
-    data_info['Retail Price (Local Currency)'] = None  # 零售价
+    data_info['Variant image'] = ','.join(htmls.xpath(
+        '//*[@id="skuInfoArrBox"]/div[3]/div[2]/div/div/div[2]/div[1]/img/@src'))
+    data_info['Retail Price (Local Currency)'] = None
     data_info['Quantity'] = 200
     data_info['Seller SKU'] = None
     data_info['Main Product Image'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[0]
@@ -102,7 +105,7 @@ def get_data():
 
     df = pd.DataFrame(data_info, index=[0])
     df.to_csv('data.csv', index=False)
-    # print(data_info['Product Description'])
+    # print(data_info['Retail Price (Local Currency)'])
 
 
 get_data()
