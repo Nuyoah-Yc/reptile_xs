@@ -1,51 +1,130 @@
-import pandas as pd
 import itertools
+import requests
+import json
+import pandas as pd
+import re
+from lxml import etree, html
 
-# 读取CSV文件
-df = pd.read_csv('data.csv')
 
-# 将需要拆分的列按逗号拆分
-df['Variation 1'] = df['Variation 1'].str.split(',')
-df['Variation 2'] = df['Variation 2'].str.split(',')
-df['Variant image'] = df['Variant image'].str.split(',')
+class TikTokProductScraper:
+    def __init__(self, browserless_url, cookie_string):
+        self.browserless_url = browserless_url
+        self.cookies = self._parse_cookies(cookie_string)
 
-# 初始化一个空的DataFrame来存储结果
-result = pd.DataFrame()
+    def _parse_cookies(self, cookie_string):
+        cookies = []
+        for cookie in cookie_string.split('; '):
+            name, value = cookie.split('=', 1)
+            cookies.append({
+                "name": name,
+                "value": value,
+                "domain": ".dianxiaomi.com",
+                "path": "/"
+            })
+        return cookies
 
-# 对每一行进行处理
-for i, row in df.iterrows():
-    variations_1 = row['Variation 1']
-    variations_2 = row['Variation 2']
-    variant_images = row['Variant image']
+    def get_html(self, product_id):
+        url = f"https://www.dianxiaomi.com/tiktokProduct/edit.htm?id={product_id}"
+        payload = {
+            "url": url,
+            "cookies": self.cookies,
+            "gotoOptions": {
+                "timeout": 30000,  # 超时时间设置为30秒
+                "waitUntil": "networkidle0"  # 等待网络空闲状态
+            }
+        }
+        response = requests.post(self.browserless_url, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
+        if response.status_code == 200:
+            return response.text
+        else:
+            print(f"Failed to fetch page: {response.status_code}")
+            print(response.text)  # 输出错误详情
+            return None
 
-    # 确保Variation 1和Variant image数量一致，不足则填充为空
-    max_length = max(len(variations_1), len(variant_images))
-    variations_1 += [''] * (max_length - len(variations_1))
-    variant_images += [''] * (max_length - len(variant_images))
+    def get_data(self, product_id):
+        html_text = self.get_html(product_id)
+        if not html_text:
+            return "没有获取到数据"
+        htmls = etree.HTML(html_text)
 
-    # 生成Variation 1和Variation 2的笛卡尔积
-    product_list = list(itertools.product(variations_1, variations_2))
+        data_info = self._extract_data(htmls)
+        df = pd.DataFrame(data_info, index=[0])
+        result = self._expand_variations(df)
+        result.to_csv(f'{product_id}.csv', index=False)
+        print(f"已爬取{product_id}号商品数据")
 
-    # 生成包含Variation 1, Variation 2和Variant image的DataFrame
-    expanded_rows = pd.DataFrame(product_list, columns=['Variation 1', 'Variation 2'])
-    expanded_rows['Variant image'] = [variant_images[i % len(variant_images)] for i in range(len(expanded_rows))]
+    def _extract_data(self, htmls):
+        data_info = {}
+        data_info['Category'] = re.sub(r'\(.*?\)', '', ''.join(
+            htmls.xpath('//span[@class="category productCategory"]/span/span/text()')).replace('\xa0>\xa0', ' > ').strip())
+        data_info['Brand'] = None
+        data_info['Product Name'] = htmls.xpath('//*[@id="productTitle"]/@value')[0]
+        data_info['Product Description'] = html.fromstring(htmls.xpath('//input[@id="saveDescriptionEditorDataIpt"]/@value')[0]).text_content()
+        data_info['Package weight(g)'] = float(htmls.xpath('//*[@id="proWeight"]/@value')[0]) * 1000
+        data_info['Package length(cm)'] = htmls.xpath('//*[@id="proLength"]/@value')[0]
+        data_info['Package width(cm)'] = htmls.xpath('//*[@id="proWidth"]/@value')[0]
+        data_info['Package height(cm)'] = htmls.xpath('//*[@id="proHeight"]/@value')[0]
+        data_info['Delivery options'] = None
+        data_info['Identifier code type'] = None
+        data_info['Identifier code'] = None
+        data_info['Variation 1'] = ','.join(
+            htmls.xpath('//*[@id="skuInfoArrBox"]/div[1]/div[2]/div[1]/div/label/span/text()'))
+        data_info['Variation 2'] = ','.join(
+            htmls.xpath('//*[@id="skuInfoArrBox"]/div[2]/div[2]/div[1]/div/label/span[2]/text()'))
+        data_info['Variant image'] = ','.join(htmls.xpath(
+            '//*[@id="skuInfoArrBox"]/div[3]/div[2]/div/div/div[2]/div[1]/img/@src'))
+        data_info['Retail Price (Local Currency)'] = None
+        data_info['Quantity'] = 200
+        data_info['Seller SKU'] = None
+        data_info['Main Product Image'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[0]
+        product_images = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')
+        for i in range(1, 10):
+            data_info[f'Product Image {i+1}'] = product_images[i] if i < len(product_images) else None
+        data_info['Size Chart'] = None
+        data_info['Warranty Type'] = None
+        data_info['Battery in The Product'] = None
+        data_info['Plug Type'] = None
+        data_info['Storage Capacity'] = None
+        data_info['Material'] = None
+        data_info['Model'] = None
+        data_info['Memory Card Type'] = None
+        data_info['Battery Type'] = None
+        data_info['Optical Zoom'] = None
+        data_info['Maximum Aperture'] = None
+        data_info['Minimum Aperture'] = None
+        data_info['Warranty Period'] = "Not Applicable"
+        data_info['UKCA/CE mark'] = None
+        data_info['Product status'] = "Active(1)"
+        return data_info
 
-    # 将其他列的值重复添加到笛卡尔积中
-    for col in df.columns:
-        if col not in ['Variation 1', 'Variation 2', 'Variant image']:
-            expanded_rows[col] = row[col]
+    def _expand_variations(self, df):
+        result = pd.DataFrame()
+        for i, row in df.iterrows():
+            variations_1 = row['Variation 1'].split(',')
+            variations_2 = row['Variation 2'].split(',')
+            variant_images = row['Variant image'].split(',')
 
-    # 将处理后的行添加到结果中
-    result = pd.concat([result, expanded_rows], ignore_index=True)
+            max_length = max(len(variations_1), len(variant_images))
+            variations_1 += [''] * (max_length - len(variations_1))
+            variant_images += [''] * (max_length - len(variant_images))
 
-# 确保列名顺序正确
-result = result[df.columns]
+            product_variations = list(itertools.product(variations_1, variations_2))
+            expanded_rows = pd.DataFrame(product_variations, columns=['Variation 1', 'Variation 2'])
+            expanded_rows['Variant image'] = [variant_images[i // len(variations_2)] for i in range(len(expanded_rows))]
 
-# 重置索引以保持数据整洁
-result = result.reset_index(drop=True)
+            for col in df.columns:
+                if col not in ['Variation 1', 'Variation 2', 'Variant image']:
+                    expanded_rows[col] = row[col]
 
-# 将处理后的数据保存到新文件
-result.to_csv('data_exploded.csv', index=False)
+            result = pd.concat([result, expanded_rows], ignore_index=True)
+        result = result[df.columns]
+        result = result.reset_index(drop=True)
+        return result
 
-# 打印处理后的数据
-print(result)
+
+if __name__ == "__main__":
+    cookie_string = "Hm_lvt_f8001a3f3d9bf5923f780580eb550c0b=1716378074; _dxm_ad_client_id=A166A34BC8B6DDD9E2F8DB07B91C19FE7; dxm_i=MTYxNDQ1NSFhVDB4TmpFME5EVTEhOGZmMjc3ZmM5YWJhOGU4ZDUwZjg5ODJiNzg3NGQ5ZDQ; dxm_t=MTcxNjQzMzIxMiFkRDB4TnpFMk5ETXpNakV5ITRiZTg2Njk3OGM5YzdjNTc5YTRhOTQ4MGNjMTM1OWRj; dxm_c=YzZVWXJMd1QhWXoxak5sVlpja3gzVkEhOTk5Y2NjOTAxOGZkYzJhYzMyNWRlYTI3ZWM4Zjc3MjU; dxm_w=ZDEwYTcwMTA5Yzg2YTM2ZTgwMzJmZWRkYWFiOWFmYjchZHoxa01UQmhOekF4TURsak9EWmhNelpsT0RBek1tWmxaR1JoWVdJNVlXWmlOdyE3N2M1OWYzYTk5YWFkMmVjMzg3YjhmOTdhOWFkYTQxNg; dxm_s=rav-G5sVoKDLJtw3LWk6GgWHV_Qrlb0ch38bNzGvEk8; Hm_lpvt_f8001a3f3d9bf5923f780580eb550c0b=1716449026; JSESSIONID=AC81388D44A14E4F5EC5074EBEBDB321"
+    scraper = TikTokProductScraper("http://192.168.20.159:3000/content", cookie_string)
+    product_ids = input("TikTok ID: ").split(",")
+    for product_id in product_ids:
+        scraper.get_data(product_id)
