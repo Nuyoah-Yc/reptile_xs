@@ -73,7 +73,7 @@ class TikTokProductScraper:
         data_info['Identifier code type'] = None
         data_info['Identifier code'] = None
         data_info['Variation 1'] = ','.join(
-            set(htmls.xpath('//*[@id="skuInfoTable"]/tbody/tr/td[1]/text()')))
+            htmls.xpath('//*[@id="skuInfoArrBox"]/div/div[2]/div/div/div[1]/text()'))
         data_info['Variation 2'] = ','.join(
             set(htmls.xpath('//*[@id="skuInfoTable"]/tbody/tr/td[2]/text()')))
         data_info['Variant image'] = ','.join(htmls.xpath(
@@ -84,7 +84,10 @@ class TikTokProductScraper:
         data_info['Main Product Image'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[0]
         product_images = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')
         for i in range(1, 10):
-            data_info[f'Product Image {i+1}'] = product_images[i] if i < len(product_images) else None
+            try:
+                data_info[f'Product Image {i + 1}'] = product_images[i]
+            except IndexError:
+                data_info[f'Product Image {i + 1}'] = None
         data_info['Size Chart'] = None
         data_info['Warranty Type'] = None
         data_info['Battery in The Product'] = None
