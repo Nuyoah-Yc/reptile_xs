@@ -71,7 +71,7 @@ def get_data():
     data_info['Identifier code type'] = None
     data_info['Identifier code'] = None
     data_info['Variation 1'] = ','.join(
-        set(htmls.xpath('//*[@id="skuInfoTable"]/tbody/tr/td[1]/text()')))
+        htmls.xpath('//*[@id="skuInfoArrBox"]/div/div[2]/div/div/div[1]/text()'))
     data_info['Variation 2'] = ','.join(
         set(htmls.xpath('//*[@id="skuInfoTable"]/tbody/tr/td[2]/text()')))
     data_info['Variant image'] = ','.join(htmls.xpath(
@@ -85,9 +85,18 @@ def get_data():
     data_info['Product Image 4'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[3]
     data_info['Product Image 5'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[4]
     data_info['Product Image 6'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[5]
-    data_info['Product Image 7'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[6]
-    data_info['Product Image 8'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[7]
-    data_info['Product Image 9'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[8]
+    try:
+        data_info['Product Image 7'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[6]
+    except IndexError:
+        data_info['Product Image 7'] = None
+    try:
+        data_info['Product Image 8'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[7]
+    except IndexError:
+        data_info['Product Image 8'] = None
+    try:
+        data_info['Product Image 9'] = htmls.xpath('//*[@id="myjDrop"]/li/div/div/img/@src')[8]
+    except IndexError:
+        data_info['Product Image 9'] = None
     data_info['Size Chart'] = None
     data_info['Warranty Type'] = None
     data_info['Battery in The Product'] = None
@@ -103,7 +112,7 @@ def get_data():
     data_info['Warranty Period'] = "Not Applicable"
     data_info['UKCA/CE mark'] = None
     data_info['Product status'] = "Active(1)"
-    print(data_info['Variant image'])
+    print(data_info['Variation 1'])
     # df = pd.DataFrame(data_info, index=[0])
     # # 将需要拆分的列按逗号拆分
     # df['Variation 1'] = df['Variation 1'].str.split(',')
