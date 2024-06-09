@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import re
 from lxml import etree, html
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class TikTokProductScraper:
     def __init__(self, browserless_url, cookie_string):
@@ -40,8 +40,7 @@ class TikTokProductScraper:
             print(f"Failed to fetch page for product ID {product_id}: {response.status_code}")
             print(response.text)  # 输出错误详情
             print("网络超时，正在尝试重新请求")
-            self.get_html(product_id)
-            # return None
+            return self.get_html(product_id)  # 尝试重新请求
 
     def get_data(self, product_id):
         html_text = self.get_html(product_id)
@@ -130,16 +129,29 @@ class TikTokProductScraper:
         return result
 
 
+def fetch_data(scraper, product_id):
+    return scraper.get_data(product_id)
+
+
 if __name__ == "__main__":
     cookie_string = "Hm_lvt_f8001a3f3d9bf5923f780580eb550c0b=1716378074; _dxm_ad_client_id=A166A34BC8B6DDD9E2F8DB07B91C19FE7; dxm_i=MTYxNDQ1NSFhVDB4TmpFME5EVTEhOGZmMjc3ZmM5YWJhOGU4ZDUwZjg5ODJiNzg3NGQ5ZDQ; dxm_t=MTcxNjQzMzIxMiFkRDB4TnpFMk5ETXpNakV5ITRiZTg2Njk3OGM5YzdjNTc5YTRhOTQ4MGNjMTM1OWRj; dxm_c=YzZVWXJMd1QhWXoxak5sVlpja3gzVkEhOTk5Y2NjOTAxOGZkYzJhYzMyNWRlYTI3ZWM4Zjc3MjU; dxm_w=ZDEwYTcwMTA5Yzg2YTM2ZTgwMzJmZWRkYWFiOWFmYjchZHoxa01UQmhOekF4TURsak9EWmhNelpsT0RBek1tWmxaR1JoWVdJNVlXWmlOdyE3N2M1OWYzYTk5YWFkMmVjMzg3YjhmOTdhOWFkYTQxNg; dxm_s=rav-G5sVoKDLJtw3LWk6GgWHV_Qrlb0ch38bNzGvEk8; Hm_lpvt_f8001a3f3d9bf5923f780580eb550c0b=1716449026; JSESSIONID=AC81388D44A14E4F5EC5074EBEBDB321"
-    scraper = TikTokProductScraper("http://110.40.40.22:3000/content", cookie_string)
+    scraper = TikTokProductScraper("http://110.40.40.22:3001/chrome/content", cookie_string)
     product_ids = input("TikTok ID: ").split(",")
     print("开始爬取数据")
+
     df_list = []
-    for product_id in product_ids:
-        data = scraper.get_data(product_id)
-        if data is not None:
-            df_list.append(data)
+    with ThreadPoolExecutor(max_workers=20) as executor: # 线程池
+        # 异步执行爬取
+        future_to_product_id = {executor.submit(fetch_data, scraper, product_id): product_id for product_id in product_ids}
+        for future in as_completed(future_to_product_id):
+            product_id = future_to_product_id[future]
+            try:
+                data = future.result()
+                if data is not None:
+                    df_list.append(data)
+            except Exception as exc:
+                print(f"{product_id} 生成了异常: {exc}")
+
     if df_list:
         df = pd.concat(df_list, ignore_index=True)
         df.to_excel("tiktok_products.xlsx", index=False)
